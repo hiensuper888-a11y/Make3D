@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="vi" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Make3D - CAD/Revit to 3D & AI Interior Render</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdfa',
+                            100: '#ccfbf1',
+                            500: '#14b8a6',
+                            600: '#0d9488',
+                            900: '#134e4a',
+                        },
+                        dark: {
+                            bg: '#0f172a',
+                            panel: '#1e293b',
+                            border: '#334155'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- GSAP for animations -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="bg-dark-bg text-white font-sans overflow-x-hidden min-h-screen">
+    
+    <!-- Navigation -->
+    <nav class="fixed w-full z-50 glass-header border-b border-dark-border px-6 py-4 flex justify-between items-center transition-all duration-300">
+        <div class="flex items-center gap-2">
+            <i data-lucide="cuboid" class="text-brand-500 w-8 h-8"></i>
+            <span class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-brand-500 to-blue-500">Make3D AI</span>
+        </div>
+        <div class="flex items-center gap-6">
+            <a href="#" class="text-gray-300 hover:text-white transition">Features</a>
+            <a href="#" class="text-gray-300 hover:text-white transition">Pricing</a>
+            <button class="bg-brand-600 hover:bg-brand-500 text-white px-5 py-2 rounded-full font-medium transition shadow-[0_0_15px_rgba(20,184,166,0.5)]">
+                Start Converting
+            </button>
+        </div>
+    </nav>
+
+    <!-- Main App Container (Hidden by default, shown when started) -->
+    <main id="app-container" class="pt-24 min-h-screen px-6 pb-12 w-full max-w-[1600px] mx-auto hidden">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 h-[calc(100vh-8rem)] min-h-[700px]">
+            
+            <!-- Left Panel (Controls & Upload) -->
+            <div class="lg:col-span-3 flex flex-col gap-6 h-full">
+                <!-- Upload Section -->
+                <div id="upload-panel" class="glass-panel p-6 rounded-2xl border border-dark-border flex flex-col h-1/3 min-h-[250px] relative overflow-hidden group">
+                    <h3 class="font-semibold text-lg mb-4 flex items-center gap-2">
+                        <i data-lucide="upload-cloud" class="w-5 h-5 text-brand-500"></i>
+                        Upload Blueprint
+                    </h3>
+                    <div id="drop-zone" class="flex-1 border-2 border-dashed border-dark-border rounded-xl flex flex-col items-center justify-center text-center p-4 hover:border-brand-500 hover:bg-white/5 transition cursor-pointer">
+                        <i data-lucide="file-type-2" class="w-10 h-10 text-gray-400 mb-2 group-hover:text-brand-500 transition"></i>
+                        <p class="text-sm font-medium">Drag & Drop CAD/Revit file</p>
+                        <p class="text-xs text-gray-500 mt-1">Supports .dwg, .rvt, .pdf</p>
+                    </div>
+                    <!-- Uploading State (hidden) -->
+                    <div id="upload-progress" class="absolute inset-0 bg-dark-panel flex flex-col items-center justify-center p-6 hidden z-10">
+                        <div class="w-16 h-16 relative mb-4">
+                            <div class="absolute inset-0 rounded-full border-4 border-dark-border"></div>
+                            <div class="absolute inset-0 rounded-full border-4 border-brand-500 border-t-transparent animate-spin"></div>
+                            <i data-lucide="box" class="absolute inset-0 m-auto w-6 h-6 text-brand-500"></i>
+                        </div>
+                        <p id="upload-status-text" class="text-sm font-medium">Analyzing layout...</p>
+                        <div class="w-full bg-dark-border h-2 rounded-full mt-4 overflow-hidden">
+                            <div id="progress-bar" class="h-full bg-brand-500 w-0 transition-all duration-300"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Settings Section -->
+                <div class="glass-panel p-6 rounded-2xl border border-dark-border flex-1 flex flex-col overflow-y-auto disabled-section" id="settings-panel">
+                    <h3 class="font-semibold text-lg mb-4 flex items-center gap-2">
+                        <i data-lucide="sliders-horizontal" class="w-5 h-5 text-brand-500"></i>
+                        Interior Style
+                    </h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="text-xs text-gray-400 uppercase tracking-wider mb-2 block">Style Preset</label>
+                            <div class="grid grid-cols-2 gap-2">
+                                <button class="style-btn active" data-style="modern">
+                                    <img src="https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?w=200&h=150&fit=crop" class="w-full h-16 object-cover rounded-lg mb-1 opacity-80" alt="Modern">
+                                    <span class="text-xs">Modern</span>
+                                </button>
+                                <button class="style-btn" data-style="japandi">
+                                    <img src="https://images.unsplash.com/photo-1540932239986-30128078f3c5?w=200&h=150&fit=crop" class="w-full h-16 object-cover rounded-lg mb-1 opacity-80" alt="Japandi">
+                                    <span class="text-xs">Japandi</span>
+                                </button>
+                                <button class="style-btn" data-style="industrial">
+                                    <img src="https://images.unsplash.com/photo-1558211583-d26f610c1eb1?w=200&h=150&fit=crop" class="w-full h-16 object-cover rounded-lg mb-1 opacity-80" alt="Industrial">
+                                    <span class="text-xs">Industrial</span>
+                                </button>
+                                <button class="style-btn" data-style="scandinavian">
+                                    <img src="https://images.unsplash.com/photo-1593696140826-c58b021acf8b?w=200&h=150&fit=crop" class="w-full h-16 object-cover rounded-lg mb-1 opacity-80" alt="Scandinavian">
+                                    <span class="text-xs">Scandi</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="text-xs text-gray-400 uppercase tracking-wider mb-2 block">Room Type</label>
+                            <select class="w-full bg-dark-bg border border-dark-border rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-brand-500 transition">
+                                <option>Living Room</option>
+                                <option>Bedroom</option>
+                                <option>Kitchen</option>
+                                <option>Entire Home (Auto)</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="text-xs text-gray-400 uppercase tracking-wider mb-2 block">Lighting</label>
+                            <div class="flex gap-2">
+                                <button class="flex-1 py-1.5 border border-dark-border rounded-md text-xs hover:bg-white/5 bg-white/10 border-brand-500">Daylight</button>
+                                <button class="flex-1 py-1.5 border border-dark-border rounded-md text-xs hover:bg-white/5">Sunset</button>
+                                <button class="flex-1 py-1.5 border border-dark-border rounded-md text-xs hover:bg-white/5">Night</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <button id="render-btn" class="bg-brand-600 hover:bg-brand-500 disabled:opacity-50 disabled:cursor-not-allowed text-white py-4 rounded-xl font-bold text-lg transition shadow-[0_0_20px_rgba(20,184,166,0.4)] flex items-center justify-center gap-2" disabled>
+                    <i data-lucide="sparkles" class="w-5 h-5"></i> Generate AI Render
+                </button>
+            </div>
+
+            <!-- Main Viewer Area -->
+            <div class="lg:col-span-9 relative flex flex-col gap-4">
+                
+                <!-- View Tabs -->
+                <div class="flex gap-2 absolute top-4 left-4 z-20">
+                    <button id="tab-2d" class="px-4 py-2 rounded-lg bg-dark-panel border border-dark-border text-sm font-medium hover:bg-white/10 transition active-tab">2D Plan</button>
+                    <button id="tab-3d" class="px-4 py-2 rounded-lg bg-dark-panel/50 backdrop-blur-md border border-dark-border text-sm font-medium hover:bg-white/10 transition disabled:opacity-50" disabled>3D Model</button>
+                    <button id="tab-render" class="px-4 py-2 rounded-lg bg-dark-panel/50 backdrop-blur-md border border-dark-border text-sm font-medium hover:bg-white/10 transition disabled:opacity-50" disabled>AI Render</button>
+                </div>
+
+                <!-- WebGL / Render Canvas Container -->
+                <div class="glass-panel border border-dark-border rounded-2xl flex-1 relative overflow-hidden bg-black/50" id="viewer-container">
+                    
+                    <!-- 2D Placeholder State -->
+                    <div id="view-2d" class="absolute inset-0 flex items-center justify-center bg-[#0a0f18] transition-opacity duration-500">
+                        <div class="text-center opacity-30" id="empty-state">
+                            <i data-lucide="drafting-compass" class="w-24 h-24 mx-auto mb-4 text-brand-500"></i>
+                            <p class="text-xl font-medium">Waiting for CAD file...</p>
+                        </div>
+                        <img src="https://images.unsplash.com/photo-1503387762-592deb58ef4e?w=800&h=600&fit=crop" id="mock-2d-plan" class="absolute inset-0 w-full h-full object-contain opacity-0 scale-95 transition-all duration-1000 hidden" alt="2D Blueprint">
+                        <!-- Scanning Grid Overlay -->
+                        <div id="scan-line" class="absolute top-0 left-0 w-full h-1 bg-brand-500 shadow-[0_0_20px_var(--tw-colors-brand-500)] hidden z-10"></div>
+                    </div>
+
+                    <!-- 3D Viewer Container (Three.js will mount here) -->
+                    <div id="view-3d" class="absolute inset-0 opacity-0 pointer-events-none transition-opacity duration-500 z-10">
+                        <canvas id="three-canvas" class="w-full h-full"></canvas>
+                        
+                        <button id="download-3d-btn" class="absolute top-4 right-4 bg-dark-panel/80 hover:bg-white/10 backdrop-blur border border-dark-border px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 pointer-events-auto z-20">
+                            <i data-lucide="download" class="w-4 h-4 text-brand-500"></i> Export .GLB
+                        </button>
+
+                        <div class="absolute bottom-4 right-4 bg-dark-panel/80 backdrop-blur border border-dark-border px-4 py-2 rounded-lg text-xs font-mono text-brand-500 flex items-center gap-2 z-20">
+                            <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                            3D Core Active
+                        </div>
+                    </div>
+
+                    <!-- Final AI Render State -->
+                    <div id="view-render" class="absolute inset-0 opacity-0 pointer-events-none transition-opacity duration-1000 z-20 bg-dark-bg flex items-center justify-center">
+                        <img src="" id="final-render-img" class="absolute inset-0 w-full h-full object-cover scale-105 transition-transform duration-10000 hidden" alt="AI Generated Render">
+                        
+                        <button id="download-render-btn" class="absolute top-4 right-4 bg-brand-600 hover:bg-brand-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition shadow-[0_0_15px_rgba(20,184,166,0.3)] flex items-center gap-2 hidden pointer-events-auto z-30">
+                            <i data-lucide="download" class="w-4 h-4"></i> Save HD Image
+                        </button>
+
+                        <!-- Loading render overlay -->
+                        <div id="render-loading" class="absolute inset-0 flex flex-col items-center justify-center bg-dark-bg/80 backdrop-blur-sm z-30">
+                            <div class="loader"></div>
+                            <p class="mt-6 text-lg font-medium tracking-wide">Enhancing details with AI...</p>
+                            <p class="text-sm text-gray-400 mt-2">Applying Modern style materials and lighting</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Landing Hero -->
+    <section id="landing" class="min-h-screen flex flex-col items-center justify-center px-6 relative overflow-hidden">
+        <!-- Background elements -->
+        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-brand-500/20 rounded-full blur-[120px] -z-10 mix-blend-screen"></div>
+        <div class="absolute top-1/4 right-1/4 w-[400px] h-[400px] bg-blue-600/20 rounded-full blur-[100px] -z-10 mix-blend-screen"></div>
+
+        <div class="max-w-4xl text-center z-10">
+            <h1 class="text-5xl md:text-7xl font-extrabold tracking-tight mb-6">
+                Redefine Architecture with <br>
+                <span class="bg-clip-text text-transparent bg-gradient-to-r from-brand-500 to-blue-500">AI Rendering</span>
+            </h1>
+            <p class="text-lg md:text-xl text-gray-400 mb-10 max-w-2xl mx-auto">
+                Instantly convert 2D CAD & Revit floorplans into interactive 3D spaces. 
+                Auto-furnish and render photorealistic interiors in seconds.
+            </p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <button id="start-app-btn" class="bg-brand-600 hover:bg-brand-500 text-white px-8 py-4 rounded-full font-bold text-lg transition-all hover:scale-105 shadow-[0_0_30px_rgba(20,184,166,0.4)] flex items-center justify-center gap-2">
+                    Start Workspace <i data-lucide="arrow-right" class="w-5 h-5"></i>
+                </button>
+                <button class="bg-white/10 hover:bg-white/20 backdrop-blur text-white px-8 py-4 rounded-full font-bold text-lg transition-all border border-white/10">
+                    Watch Demo
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Scripts -->
+    <!-- Three.js dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js"></script>
+    <!-- App Logic -->
+    <script src="app.js"></script>
+</body>
+</html>
