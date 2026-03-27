@@ -354,23 +354,46 @@ renderBtn.addEventListener('click', async () => {
             // Very specific prompt based on selected style
             const prompt = `Highly detailed, photorealistic interior design photography of an empty room furnished in ${currentStyle} style, modern architectural render, stunning natural lighting, 8k resolution, highly detailed textures, interior design magazine cover`;
             
-            const response = await fetch(
-                "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0",
-                {
-                    headers: { Authorization: `Bearer ${apiKey}` },
-                    method: "POST",
-                    body: JSON.stringify({ inputs: prompt }),
+            async function queryHuggingFace(retries = 3) {
+                const response = await fetch(
+                    "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0",
+                    {
+                        headers: { 
+                            "Authorization": `Bearer ${apiKey}`,
+                            "Content-Type": "application/json"
+                        },
+                        method: "POST",
+                        body: JSON.stringify({ inputs: prompt }),
+                    }
+                );
+                
+                // Handle Cold Start (Model Loading)
+                if (response.status === 503) {
+                    const result = await response.json();
+                    if (result.estimated_time && retries > 0) {
+                        const waitTime = Math.ceil(result.estimated_time);
+                        renderLoading.querySelector('p:last-child').innerText = `Máy chủ AI đang khởi động... Vui lòng đợi (${waitTime}s)`;
+                        
+                        await new Promise(r => setTimeout(r, waitTime * 1000));
+                        
+                        renderLoading.querySelector('p:last-child').innerText = `Đang render ảnh thực AI (${currentStyle})...`;
+                        return queryHuggingFace(retries - 1);
+                    }
                 }
-            );
-            
-            if (!response.ok) {
-                throw new Error('API Request failed. Status: ' + response.status);
+                
+                if (!response.ok) {
+                    let errText = await response.text();
+                    throw new Error('API Error ' + response.status + ': ' + errText);
+                }
+                
+                return response.blob();
             }
+            
+            const blob = await queryHuggingFace();
             
             // Deduct from quota successfully
             consumeApiQuota(apiKey);
 
-            const blob = await response.blob();
             finalRenderImg.src = URL.createObjectURL(blob);
             
             renderLoading.classList.add('hidden');
