@@ -13,6 +13,9 @@ const uploadStatusText = document.getElementById('upload-status-text');
 const settingsPanel = document.getElementById('settings-panel');
 const renderBtn = document.getElementById('render-btn');
 const hfApiKeyInput = document.getElementById('hf-api-key');
+const apiStatusPanel = document.getElementById('api-status-panel');
+const currentDateTimeEl = document.getElementById('current-date-time');
+const apiRemainingEl = document.getElementById('api-remaining');
 
 const tab2d = document.getElementById('tab-2d');
 const tab3d = document.getElementById('tab-3d');
@@ -27,6 +30,7 @@ const mock2dPlan = document.getElementById('mock-2d-plan');
 const scanLine = document.getElementById('scan-line');
 const finalRenderImg = document.getElementById('final-render-img');
 const renderLoading = document.getElementById('render-loading');
+const viewTextured3dBtn = document.getElementById('view-textured-3d-btn');
 
 const download3dBtn = document.getElementById('download-3d-btn');
 const downloadRenderBtn = document.getElementById('download-render-btn');
@@ -190,6 +194,54 @@ tab2d.addEventListener('click', () => switchTab('2d'));
 tab3d.addEventListener('click', () => switchTab('3d'));
 tabRender.addEventListener('click', () => switchTab('render'));
 
+// 4.5 API Quota & Date Time Management
+function updateDateTime() {
+    const now = new Date();
+    const days = ['Chủ Nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
+    const dayName = days[now.getDay()];
+    const dateStr = now.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const timeStr = now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    if(currentDateTimeEl) currentDateTimeEl.innerText = `${dayName}, ${dateStr} - ${timeStr}`;
+}
+setInterval(updateDateTime, 1000);
+
+hfApiKeyInput.addEventListener('input', () => {
+    const key = hfApiKeyInput.value.trim();
+    if (key.length > 5) {
+        apiStatusPanel.classList.remove('hidden');
+        updateDateTime();
+        loadApiQuota(key);
+    } else {
+        apiStatusPanel.classList.add('hidden');
+    }
+});
+
+function loadApiQuota(key) {
+    const today = new Date().toDateString();
+    let data = JSON.parse(localStorage.getItem('make3d_api_quota') || '{}');
+    
+    // Reset quota if it's a new day or new key
+    if (!data[key] || data[key].date !== today) {
+        data[key] = { date: today, used: 0, total: 100 };
+        localStorage.setItem('make3d_api_quota', JSON.stringify(data));
+    }
+    
+    const remaining = data[key].total - data[key].used;
+    apiRemainingEl.innerText = remaining + " lượt";
+    if (remaining <= 10) apiRemainingEl.className = "font-bold text-red-500 text-sm";
+    else if (remaining <= 50) apiRemainingEl.className = "font-bold text-yellow-400 text-sm";
+    else apiRemainingEl.className = "font-bold text-green-400 text-sm";
+}
+
+function consumeApiQuota(key) {
+    let data = JSON.parse(localStorage.getItem('make3d_api_quota') || '{}');
+    if (data[key] && data[key].used < data[key].total) {
+        data[key].used++;
+        localStorage.setItem('make3d_api_quota', JSON.stringify(data));
+        loadApiQuota(key);
+    }
+}
+
 // 5. Render Action
 renderBtn.addEventListener('click', async () => {
     tabRender.disabled = false;
@@ -201,6 +253,7 @@ renderBtn.addEventListener('click', async () => {
     finalRenderImg.classList.remove('scale-100');
     finalRenderImg.classList.add('scale-105');
     downloadRenderBtn.classList.add('hidden');
+    viewTextured3dBtn.classList.add('hidden');
     
     // Disable render button temporarily
     const originalText = renderBtn.innerHTML;
@@ -212,6 +265,14 @@ renderBtn.addEventListener('click', async () => {
 
     // If User provided API key, we make a real call to HuggingFace SDXL
     if (apiKey) {
+        // Check local quota
+        let data = JSON.parse(localStorage.getItem('make3d_api_quota') || '{}');
+        if (data[apiKey] && data[apiKey].used >= data[apiKey].total) {
+            alert("Bạn đã hết 100 lượt render tối đa trong ngày hôm nay! Hệ thống sẽ reset lúc 00:00 Nửa đêm. (Tạm thời dùng hệ thống nội thất mẫu)");
+            // fallback to mock explicitly
+            return runMockRender(originalText);
+        }
+
         renderLoading.querySelector('p:last-child').innerText = `Generating real AI Render (${currentStyle})...`;
         
         try {
@@ -231,12 +292,18 @@ renderBtn.addEventListener('click', async () => {
                 throw new Error('API Request failed. Status: ' + response.status);
             }
             
+            // Deduct from quota successfully
+            consumeApiQuota(apiKey);
+
             const blob = await response.blob();
             finalRenderImg.src = URL.createObjectURL(blob);
             
             renderLoading.classList.add('hidden');
             finalRenderImg.classList.remove('hidden');
             
+            // Simulate applying AI textures to 3D
+            applyAIStyleTo3D(currentStyle);
+
             requestAnimationFrame(() => {
                 finalRenderImg.classList.remove('scale-105');
                 finalRenderImg.classList.add('scale-100');
@@ -248,6 +315,7 @@ renderBtn.addEventListener('click', async () => {
             // fallback to mock image and hide loading
             renderLoading.classList.add('hidden');
             finalRenderImg.src = mockImages.renders[currentStyle] || mockImages.renders.modern;
+            applyAIStyleTo3D(currentStyle);
             finalRenderImg.classList.remove('hidden');
         } finally {
             // Restore button
@@ -255,15 +323,24 @@ renderBtn.addEventListener('click', async () => {
             renderBtn.innerHTML = originalText;
             lucide.createIcons();
             downloadRenderBtn.classList.remove('hidden');
+            viewTextured3dBtn.classList.remove('hidden');
         }
         
     } else {
-        // Fallback to Mock Data Simulation
-        renderLoading.querySelector('p:last-child').innerText = 'Applying Modern style templates...';
-        setTimeout(() => {
+        runMockRender(originalText);
+    }
+});
+
+function runMockRender(originalText) {
+    // Fallback to Mock Data Simulation
+    renderLoading.querySelector('p:last-child').innerText = 'Applying Modern style templates...';
+    setTimeout(() => {
             renderLoading.classList.add('hidden');
             finalRenderImg.src = mockImages.renders[currentStyle] || mockImages.renders.modern;
             finalRenderImg.classList.remove('hidden');
+            
+            // Simulate applying AI textures to 3D
+            applyAIStyleTo3D(currentStyle);
             
             // Slight zoom out animation for reveal
             requestAnimationFrame(() => {
@@ -271,17 +348,22 @@ renderBtn.addEventListener('click', async () => {
                 finalRenderImg.classList.add('scale-100');
             });
 
-            // Restore button
-            renderBtn.disabled = false;
-            renderBtn.innerHTML = originalText;
-            lucide.createIcons();
-            downloadRenderBtn.classList.remove('hidden');
-        }, 4500);
-    }
+        // Restore button
+        renderBtn.disabled = false;
+        renderBtn.innerHTML = originalText;
+        lucide.createIcons();
+        downloadRenderBtn.classList.remove('hidden');
+        viewTextured3dBtn.classList.remove('hidden');
+    }, 4500);
+}
+
+viewTextured3dBtn.addEventListener('click', () => {
+    switchTab('3d');
 });
 
 // 6. Three.js Initialization (Procedural Mock 3D Room)
 let scene, camera, renderer, controls;
+let sceneWalls = [], sceneFloors = [], sceneFurniture = [];
 
 function initThreeJS() {
     if (threeSceneStarted) return;
@@ -345,6 +427,10 @@ function initThreeJS() {
 }
 
 function createBuildingMaterial() {
+    sceneWalls = [];
+    sceneFloors = [];
+    sceneFurniture = [];
+
     const wallMaterial = new THREE.MeshStandardMaterial({ 
         color: 0x94a3b8,
         roughness: 0.7,
@@ -360,6 +446,7 @@ function createBuildingMaterial() {
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     scene.add(floor);
+    sceneFloors.push(floor);
 
     // Create some walls forming rooms
     const walls = [];
@@ -372,6 +459,7 @@ function createBuildingMaterial() {
         mesh.receiveShadow = true;
         scene.add(mesh);
         walls.push(mesh);
+        sceneWalls.push(mesh);
     }
 
     // Outer walls
@@ -386,11 +474,20 @@ function createBuildingMaterial() {
 
     // Add some wireframe blocks representing furniture
     const furnitureGeo = new THREE.BoxGeometry(2, 1, 3);
-    const furnitureMat = new THREE.MeshBasicMaterial({ color: 0x14b8a6, wireframe: true, transparent: true, opacity: 0 });
+    const furnitureMat = new THREE.MeshStandardMaterial({ color: 0x14b8a6, wireframe: true, transparent: true, opacity: 0 });
     const sofa = new THREE.Mesh(furnitureGeo, furnitureMat);
     sofa.position.set(3, 0.5, 2);
     scene.add(sofa);
     walls.push(sofa);
+    sceneFurniture.push(sofa);
+
+    const tableGeo = new THREE.BoxGeometry(1.5, 0.5, 1.5);
+    const tableMat = new THREE.MeshStandardMaterial({ color: 0x14b8a6, wireframe: true, transparent: true, opacity: 0 });
+    const table = new THREE.Mesh(tableGeo, tableMat);
+    table.position.set(6, 0.25, 2);
+    scene.add(table);
+    walls.push(table);
+    sceneFurniture.push(table);
 
     // Animate walls growing up (extrusion effect)
     walls.forEach((wall, index) => {
@@ -409,10 +506,47 @@ function createBuildingMaterial() {
             ease: "back.out(1.2)"
         });
         gsap.to(wall.material, {
-            opacity: wall.material.wireframe ? 0.8 : 0.9,
+            opacity: wall.material.wireframe ? 0.8 : 1,
             duration: 1,
             delay: index * 0.1
         });
+    });
+}
+
+function applyAIStyleTo3D(style) {
+    if(!scene) return;
+
+    let wallHex, floorHex, furnHex;
+    
+    switch(style) {
+        case 'modern':
+            wallHex = 0xffffff; floorHex = 0x555555; furnHex = 0x334155;
+            break;
+        case 'japandi':
+            wallHex = 0xf5f5dc; floorHex = 0xd2b48c; furnHex = 0x8b5a2b;
+            break;
+        case 'industrial':
+            wallHex = 0x8b8989; floorHex = 0x363636; furnHex = 0x8b4513; 
+            break;
+        case 'scandinavian':
+            wallHex = 0xfffafa; floorHex = 0xdeb887; furnHex = 0xadd8e6;
+            break;
+        default:
+            wallHex = 0xffffff; floorHex = 0x888888; furnHex = 0x14b8a6;
+    }
+
+    const tWall = new THREE.Color(wallHex);
+    const tFloor = new THREE.Color(floorHex);
+    const tFurn = new THREE.Color(furnHex);
+
+    sceneWalls.forEach(w => gsap.to(w.material.color, { r: tWall.r, g: tWall.g, b: tWall.b, duration: 1.5 }));
+    sceneFloors.forEach(f => gsap.to(f.material.color, { r: tFloor.r, g: tFloor.g, b: tFloor.b, duration: 1.5 }));
+    
+    sceneFurniture.forEach(furn => {
+        furn.material.wireframe = false;
+        furn.material.transparent = false;
+        gsap.to(furn.material, { opacity: 1, duration: 1 });
+        gsap.to(furn.material.color, { r: tFurn.r, g: tFurn.g, b: tFurn.b, duration: 1.5 });
     });
 }
 
