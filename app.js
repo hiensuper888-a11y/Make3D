@@ -336,64 +336,86 @@ renderBtn.addEventListener('click', async () => {
     renderBtn.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i> Processing...';
     lucide.createIcons();
 
-    const apiKey = hfApiKeyInput ? hfApiKeyInput.value.trim() : "";
+    let apiKey = hfApiKeyInput ? hfApiKeyInput.value.trim() : "";
 
-    // If User provided API key, we make a real call to HuggingFace SDXL
-    if (apiKey) {
-        // Check local quota
+    // Check local quota for HuggingFace tokens
+    if (apiKey && apiKey.startsWith('hf_')) {
         let data = JSON.parse(localStorage.getItem('make3d_api_quota') || '{}');
         if (data[apiKey] && data[apiKey].used >= data[apiKey].total) {
-            alert("Bạn đã hết 100 lượt render tối đa trong ngày hôm nay! Hệ thống sẽ reset lúc 00:00 Nửa đêm. (Tạm thời dùng hệ thống nội thất mẫu)");
-            // fallback to mock explicitly
-            return runMockRender(originalText);
+            alert("API Key của bạn đã dùng hết 100 lượt Render hôm nay! Hệ thống sẽ chuyển qua Máy chủ AI Miễn Phí (Pollinations) thay thế.");
+            apiKey = ""; // nullify to force fallback
         }
+    }
 
-        renderLoading.querySelector('p:last-child').innerText = `Generating real AI Render (${currentStyle})...`;
+    renderLoading.querySelector('p:last-child').innerText = `Khởi tạo quy trình vẽ AI (${currentStyle})...`;
         
         try {
             // Very specific prompt based on selected style
             const prompt = `Highly detailed, photorealistic interior design photography of an empty room furnished in ${currentStyle} style, modern architectural render, stunning natural lighting, 8k resolution, highly detailed textures, interior design magazine cover`;
             
-            async function queryHuggingFace(retries = 3) {
-                const response = await fetch(
-                    "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0",
-                    {
-                        headers: { 
-                            "Authorization": `Bearer ${apiKey}`,
-                            "Content-Type": "application/json"
-                        },
-                        method: "POST",
-                        body: JSON.stringify({ inputs: prompt }),
-                    }
-                );
-                
-                // Handle Cold Start (Model Loading)
-                if (response.status === 503) {
-                    const result = await response.json();
-                    if (result.estimated_time && retries > 0) {
-                        const waitTime = Math.ceil(result.estimated_time);
-                        renderLoading.querySelector('p:last-child').innerText = `Máy chủ AI đang khởi động... Vui lòng đợi (${waitTime}s)`;
+            async function generateAIImage(retries = 3, waitSec = 15) {
+                // If API Key exists and is HuggingFace
+                if (apiKey && apiKey.startsWith('hf_')) {
+                    try {
+                        const response = await fetch(
+                            "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0",
+                            {
+                                headers: { 
+                                    "Authorization": `Bearer ${apiKey}`,
+                                    "Content-Type": "application/json"
+                                },
+                                method: "POST",
+                                body: JSON.stringify({ inputs: prompt }),
+                            }
+                        );
                         
-                        await new Promise(r => setTimeout(r, waitTime * 1000));
+                        if (response.status === 503) {
+                            const result = await response.json();
+                            if (result.estimated_time && retries > 0) {
+                                const waitTime = Math.ceil(result.estimated_time);
+                                renderLoading.querySelector('p:last-child').innerText = `Máy chủ AI đang khởi động... Vui lòng đợi (${waitTime}s)`;
+                                await new Promise(r => setTimeout(r, waitTime * 1000));
+                                renderLoading.querySelector('p:last-child').innerText = `Đang render ảnh thực AI (${currentStyle})...`;
+                                return generateAIImage(retries - 1, waitSec + 5);
+                            }
+                        }
                         
-                        renderLoading.querySelector('p:last-child').innerText = `Đang render ảnh thực AI (${currentStyle})...`;
-                        return queryHuggingFace(retries - 1);
+                        if (!response.ok) {
+                            let errText = await response.text();
+                            throw new Error('API Error ' + response.status + ': ' + errText);
+                        }
+                        
+                        consumeApiQuota(apiKey);
+                        return response.blob();
+    
+                    } catch (err) {
+                        if (err.message.includes('Failed to fetch') && retries > 0) {
+                            renderLoading.querySelector('p:last-child').innerText = `Server AI đang ngủ (CORS). Đang tự khởi động lại... (${waitSec}s)`;
+                            await new Promise(r => setTimeout(r, waitSec * 1000));
+                            renderLoading.querySelector('p:last-child').innerText = `Đang thử lặp lại yêu cầu (${retries} lần nữa)...`;
+                            return generateAIImage(retries - 1, waitSec + 10);
+                        }
+                        throw err;
                     }
+                } 
+                else if (apiKey && apiKey.startsWith('AIza')) {
+                    alert("Lưu ý: Mã API của Google AI Studio (bắt đầu bằng AIza) chỉ hỗ trợ Chat/Dịch chữ, KHÔNG hỗ trợ vẽ hình (Imagen). Hệ thống sẽ chuyển qua Máy chủ AI Miễn Phí (Pollinations) thay thế!");
                 }
+
+                // THE ULTIMATE FREE FALLBACK: Pollinations.ai (No API Key required)
+                renderLoading.querySelector('p:last-child').innerText = `Đang kích hoạt Mạng lưới AI Miễn phí (Pollinations)...`;
                 
-                if (!response.ok) {
-                    let errText = await response.text();
-                    throw new Error('API Error ' + response.status + ': ' + errText);
-                }
+                const seed = Math.floor(Math.random() * 1000000);
+                const pollUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1200&height=800&nologo=true&seed=${seed}`;
                 
+                // Fetch to display loading correctly
+                const response = await fetch(pollUrl);
+                if (!response.ok) throw new Error("Lỗi mạng lưới Pollinations");
                 return response.blob();
             }
             
-            const blob = await queryHuggingFace();
+            const blob = await generateAIImage();
             
-            // Deduct from quota successfully
-            consumeApiQuota(apiKey);
-
             finalRenderImg.src = URL.createObjectURL(blob);
             
             renderLoading.classList.add('hidden');
@@ -408,9 +430,9 @@ renderBtn.addEventListener('click', async () => {
             });
 
         } catch (error) {
-            console.error(error);
-            alert("Lỗi khi kết nối API HuggingFace! Vui lòng kiểm tra lại Token API hoặc do mạng.\nSẽ quay về ảnh mẫu.");
-            // fallback to mock image and hide loading
+            console.error("Lỗi Render:", error);
+            alert("Lỗi máy chủ AI! Sẽ quay về ảnh nội thất mẫu cục bộ.");
+            // absolute fallback to offline static mock image
             renderLoading.classList.add('hidden');
             finalRenderImg.src = mockImages.renders[currentStyle] || mockImages.renders.modern;
             applyAIStyleTo3D(currentStyle);
@@ -423,37 +445,9 @@ renderBtn.addEventListener('click', async () => {
             downloadRenderBtn.classList.remove('hidden');
             viewTextured3dBtn.classList.remove('hidden');
         }
-        
-    } else {
-        runMockRender(originalText);
-    }
 });
 
-function runMockRender(originalText) {
-    // Fallback to Mock Data Simulation
-    renderLoading.querySelector('p:last-child').innerText = 'Applying Modern style templates...';
-    setTimeout(() => {
-            renderLoading.classList.add('hidden');
-            finalRenderImg.src = mockImages.renders[currentStyle] || mockImages.renders.modern;
-            finalRenderImg.classList.remove('hidden');
-            
-            // Simulate applying AI textures to 3D
-            applyAIStyleTo3D(currentStyle);
-            
-            // Slight zoom out animation for reveal
-            requestAnimationFrame(() => {
-                finalRenderImg.classList.remove('scale-105');
-                finalRenderImg.classList.add('scale-100');
-            });
-
-        // Restore button
-        renderBtn.disabled = false;
-        renderBtn.innerHTML = originalText;
-        lucide.createIcons();
-        downloadRenderBtn.classList.remove('hidden');
-        viewTextured3dBtn.classList.remove('hidden');
-    }, 4500);
-}
+// NO LONGER NEEDED: runMockRender is removed since we have 100% Free AI now.
 
 viewTextured3dBtn.addEventListener('click', () => {
     switchTab('3d');
