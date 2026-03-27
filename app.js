@@ -1,3 +1,12 @@
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
+import { IFCLoader } from 'https://cdn.jsdelivr.net/npm/web-ifc-three@0.0.126/IFCLoader.js';
+
+// Setup IFCLoader WASM path
+const ifcLoader = new IFCLoader();
+ifcLoader.ifcManager.setWasmPath('https://cdn.jsdelivr.net/npm/web-ifc@0.0.36/');
+
 // Initialize Lucide Icons
 lucide.createIcons();
 
@@ -78,7 +87,7 @@ dropZone.addEventListener('drop', (e) => {
     e.preventDefault();
     dropZone.classList.remove('border-brand-500', 'bg-white/5');
     if(e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-        startUploadProcess(e.dataTransfer.files[0].name);
+        startUploadProcess(e.dataTransfer.files[0]);
     }
 });
 
@@ -88,42 +97,67 @@ dropZone.addEventListener('click', () => {
 
 fileInput.addEventListener('change', (e) => {
     if(e.target.files && e.target.files.length > 0) {
-        startUploadProcess(e.target.files[0].name);
+        startUploadProcess(e.target.files[0]);
     }
 });
 
-function startUploadProcess(filename = "blueprint.dwg") {
+function startUploadProcess(file = null) {
+    const filename = file ? file.name : "blueprint.dwg";
+    const isImage = file && file.type && file.type.startsWith('image/');
+    const isIFC = file && filename.toLowerCase().endsWith('.ifc');
+    let localFileUrl = null;
+    
+    if (file) {
+        localFileUrl = URL.createObjectURL(file);
+    }
+
     uploadProgress.classList.remove('hidden');
     
     // Animate progress bar (Simulating processing CAD file)
     gsap.to(progressBar, {
         width: "100%",
-        duration: 3.5,
+        duration: isIFC ? 1.5 : 3.5, // Faster load for IFC to let the real loader take over
         ease: "power1.inOut",
         onUpdate: function() {
             const progress = this.progress();
-            if (progress < 0.3) uploadStatusText.innerText = `Reading ${filename}...`;
-            else if (progress < 0.6) uploadStatusText.innerText = "Extracting 2D geometry...";
-            else if (progress < 0.9) uploadStatusText.innerText = "Generating 3D volumes...";
-            else uploadStatusText.innerText = "Ready!";
+            
+            // Helper function to safely update text ignoring DOM errors if user switches too fast
+            const updateStatusText = (text) => {
+                if(uploadStatusText) uploadStatusText.innerText = text;
+            };
+
+            if (progress < 0.3) updateStatusText(`Reading ${filename}...`);
+            else if (progress < 0.6) updateStatusText("Extracting logic...");
+            else if (progress < 0.9) updateStatusText(isIFC ? "Loading Open-BIM IFC Model..." : "Generating 3D volumes...");
+            else updateStatusText("Ready!");
         },
         onComplete: () => {
             gsap.to(uploadProgress, { opacity: 0, duration: 0.5, onComplete: () => {
                 uploadProgress.classList.add('hidden');
                 uploadProgress.style.opacity = 1;
-                show2DPlan();
+                
+                if (isIFC) {
+                    loadRealIFCModel(localFileUrl);
+                } else {
+                    show2DPlan(isImage ? localFileUrl : null);
+                }
             }});
         }
     });
 }
 
-function show2DPlan() {
+function show2DPlan(customImageUrl = null) {
     // Hide empty state
     emptyState.classList.add('hidden');
     
     // Show mocked 2D image
     mock2dPlan.classList.remove('hidden');
-    mock2dPlan.src = mockImages.plan2D;
+    
+    if (customImageUrl) {
+        mock2dPlan.src = customImageUrl;
+    } else {
+        mock2dPlan.src = mockImages.plan2D;
+    }
     
     gsap.to(mock2dPlan, { opacity: 1, scale: 1, duration: 1 });
 
@@ -143,10 +177,51 @@ function show2DPlan() {
         repeat: -1
     });
 
+    if (!threeSceneStarted) initThreeJS();
+
     // Auto-switch to 3D tab after a delay to show the "magic"
     setTimeout(() => {
         switchTab('3d');
     }, 3000);
+}
+
+function loadRealIFCModel(url) {
+    emptyState.classList.add('hidden');
+    
+    // Enable Settings
+    settingsPanel.classList.add('active');
+    renderBtn.disabled = false;
+    tab3d.disabled = false;
+
+    // Switch to 3D tab
+    switchTab('3d');
+    
+    if (!threeSceneStarted) initThreeJS();
+
+    // Clear procedural mockup
+    sceneWalls.forEach(w => scene.remove(w));
+    sceneFloors.forEach(f => scene.remove(f));
+    sceneFurniture.forEach(furn => scene.remove(furn));
+    sceneWalls = []; sceneFloors = []; sceneFurniture = [];
+
+    // Load IFC via WASM
+    ifcLoader.load(url, (ifcModel) => {
+        scene.add(ifcModel);
+        
+        // Add to array so GSAP can color it during AI Render simulation
+        sceneFurniture.push(ifcModel);
+        
+        // Center camera dynamically
+        ifcModel.geometry.computeBoundingBox();
+        const center = new THREE.Vector3();
+        ifcModel.geometry.boundingBox.getCenter(center);
+        controls.target.copy(center);
+        camera.position.set(center.x + 10, center.y + 10, center.z + 10);
+        controls.update();
+    }, undefined, (error) => {
+        console.error("IFC Load Error:", error);
+        alert("Có lỗi xảy ra khi bóc tách file IFC bằng WebAssembly!");
+    });
 }
 
 // 3. Style Selection
@@ -387,7 +462,7 @@ function initThreeJS() {
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
     controls.maxPolarAngle = Math.PI / 2 - 0.1; // Don't go below ground
@@ -576,7 +651,7 @@ download3dBtn.addEventListener('click', () => {
     download3dBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Processing...';
     lucide.createIcons();
     
-    const exporter = new THREE.GLTFExporter();
+    const exporter = new GLTFExporter();
     exporter.parse(scene, function (gltf) {
         const blob = new Blob([gltf], { type: 'application/octet-stream' });
         const url = URL.createObjectURL(blob);
