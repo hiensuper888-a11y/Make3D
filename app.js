@@ -408,15 +408,23 @@ renderBtn.addEventListener('click', async () => {
                 const seed = Math.floor(Math.random() * 1000000);
                 const pollUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1200&height=800&nologo=true&seed=${seed}`;
                 
-                // Fetch to display loading correctly
-                const response = await fetch(pollUrl);
-                if (!response.ok) throw new Error("Lỗi mạng lưới Pollinations");
-                return response.blob();
+                // Tải ảnh qua thẻ Image ẩn để lách luật CORS/Tường lửa chống spam API của Pollinations
+                return new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = () => resolve(pollUrl);
+                    img.onerror = () => reject(new Error("Lỗi tải ảnh từ Pollinations"));
+                    img.src = pollUrl;
+                });
             }
             
-            const blob = await generateAIImage();
+            const imgResult = await generateAIImage();
             
-            finalRenderImg.src = URL.createObjectURL(blob);
+            // Nếu là Blob từ HuggingFace thì tạo URL, nếu là Link thẳng từ Pollinations thì gắn luôn
+            if (imgResult instanceof Blob) {
+                finalRenderImg.src = URL.createObjectURL(imgResult);
+            } else {
+                finalRenderImg.src = imgResult;
+            }
             
             renderLoading.classList.add('hidden');
             finalRenderImg.classList.remove('hidden');
