@@ -6,11 +6,13 @@ const landing = document.getElementById('landing');
 const appContainer = document.getElementById('app-container');
 const startAppBtn = document.getElementById('start-app-btn');
 const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
 const uploadProgress = document.getElementById('upload-progress');
 const progressBar = document.getElementById('progress-bar');
 const uploadStatusText = document.getElementById('upload-status-text');
 const settingsPanel = document.getElementById('settings-panel');
 const renderBtn = document.getElementById('render-btn');
+const hfApiKeyInput = document.getElementById('hf-api-key');
 
 const tab2d = document.getElementById('tab-2d');
 const tab3d = document.getElementById('tab-3d');
@@ -71,14 +73,22 @@ dropZone.addEventListener('dragleave', () => {
 dropZone.addEventListener('drop', (e) => {
     e.preventDefault();
     dropZone.classList.remove('border-brand-500', 'bg-white/5');
-    startUploadProcess();
+    if(e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        startUploadProcess(e.dataTransfer.files[0].name);
+    }
 });
 
 dropZone.addEventListener('click', () => {
-    startUploadProcess();
+    fileInput.click();
 });
 
-function startUploadProcess() {
+fileInput.addEventListener('change', (e) => {
+    if(e.target.files && e.target.files.length > 0) {
+        startUploadProcess(e.target.files[0].name);
+    }
+});
+
+function startUploadProcess(filename = "blueprint.dwg") {
     uploadProgress.classList.remove('hidden');
     
     // Animate progress bar (Simulating processing CAD file)
@@ -88,7 +98,7 @@ function startUploadProcess() {
         ease: "power1.inOut",
         onUpdate: function() {
             const progress = this.progress();
-            if (progress < 0.3) uploadStatusText.innerText = "Reading CAD/Revit metadata...";
+            if (progress < 0.3) uploadStatusText.innerText = `Reading ${filename}...`;
             else if (progress < 0.6) uploadStatusText.innerText = "Extracting 2D geometry...";
             else if (progress < 0.9) uploadStatusText.innerText = "Generating 3D volumes...";
             else uploadStatusText.innerText = "Ready!";
@@ -181,7 +191,7 @@ tab3d.addEventListener('click', () => switchTab('3d'));
 tabRender.addEventListener('click', () => switchTab('render'));
 
 // 5. Render Action
-renderBtn.addEventListener('click', () => {
+renderBtn.addEventListener('click', async () => {
     tabRender.disabled = false;
     switchTab('render');
     
@@ -198,24 +208,76 @@ renderBtn.addEventListener('click', () => {
     renderBtn.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i> Processing...';
     lucide.createIcons();
 
-    // Simulate AI Generation time
-    setTimeout(() => {
-        renderLoading.classList.add('hidden');
-        finalRenderImg.src = mockImages.renders[currentStyle] || mockImages.renders.modern;
-        finalRenderImg.classList.remove('hidden');
-        
-        // Slight zoom out animation for reveal
-        requestAnimationFrame(() => {
-            finalRenderImg.classList.remove('scale-105');
-            finalRenderImg.classList.add('scale-100');
-        });
+    const apiKey = hfApiKeyInput ? hfApiKeyInput.value.trim() : "";
 
-        // Restore button
-        renderBtn.disabled = false;
-        renderBtn.innerHTML = originalText;
-        lucide.createIcons();
-        downloadRenderBtn.classList.remove('hidden');
-    }, 4500);
+    // If User provided API key, we make a real call to HuggingFace SDXL
+    if (apiKey) {
+        renderLoading.querySelector('p:last-child').innerText = `Generating real AI Render (${currentStyle})...`;
+        
+        try {
+            // Very specific prompt based on selected style
+            const prompt = `Highly detailed, photorealistic interior design photography of an empty room furnished in ${currentStyle} style, modern architectural render, stunning natural lighting, 8k resolution, highly detailed textures, interior design magazine cover`;
+            
+            const response = await fetch(
+                "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0",
+                {
+                    headers: { Authorization: `Bearer ${apiKey}` },
+                    method: "POST",
+                    body: JSON.stringify({ inputs: prompt }),
+                }
+            );
+            
+            if (!response.ok) {
+                throw new Error('API Request failed. Status: ' + response.status);
+            }
+            
+            const blob = await response.blob();
+            finalRenderImg.src = URL.createObjectURL(blob);
+            
+            renderLoading.classList.add('hidden');
+            finalRenderImg.classList.remove('hidden');
+            
+            requestAnimationFrame(() => {
+                finalRenderImg.classList.remove('scale-105');
+                finalRenderImg.classList.add('scale-100');
+            });
+
+        } catch (error) {
+            console.error(error);
+            alert("Lỗi khi kết nối API HuggingFace! Vui lòng kiểm tra lại Token API hoặc do mạng.\nSẽ quay về ảnh mẫu.");
+            // fallback to mock image and hide loading
+            renderLoading.classList.add('hidden');
+            finalRenderImg.src = mockImages.renders[currentStyle] || mockImages.renders.modern;
+            finalRenderImg.classList.remove('hidden');
+        } finally {
+            // Restore button
+            renderBtn.disabled = false;
+            renderBtn.innerHTML = originalText;
+            lucide.createIcons();
+            downloadRenderBtn.classList.remove('hidden');
+        }
+        
+    } else {
+        // Fallback to Mock Data Simulation
+        renderLoading.querySelector('p:last-child').innerText = 'Applying Modern style templates...';
+        setTimeout(() => {
+            renderLoading.classList.add('hidden');
+            finalRenderImg.src = mockImages.renders[currentStyle] || mockImages.renders.modern;
+            finalRenderImg.classList.remove('hidden');
+            
+            // Slight zoom out animation for reveal
+            requestAnimationFrame(() => {
+                finalRenderImg.classList.remove('scale-105');
+                finalRenderImg.classList.add('scale-100');
+            });
+
+            // Restore button
+            renderBtn.disabled = false;
+            renderBtn.innerHTML = originalText;
+            lucide.createIcons();
+            downloadRenderBtn.classList.remove('hidden');
+        }, 4500);
+    }
 });
 
 // 6. Three.js Initialization (Procedural Mock 3D Room)

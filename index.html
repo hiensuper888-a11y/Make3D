@@ -70,10 +70,11 @@
                         <i data-lucide="upload-cloud" class="w-5 h-5 text-brand-500"></i>
                         Upload Blueprint
                     </h3>
-                    <div id="drop-zone" class="flex-1 border-2 border-dashed border-dark-border rounded-xl flex flex-col items-center justify-center text-center p-4 hover:border-brand-500 hover:bg-white/5 transition cursor-pointer">
-                        <i data-lucide="file-type-2" class="w-10 h-10 text-gray-400 mb-2 group-hover:text-brand-500 transition"></i>
-                        <p class="text-sm font-medium">Drag & Drop CAD/Revit file</p>
-                        <p class="text-xs text-gray-500 mt-1">Supports .dwg, .rvt, .pdf</p>
+                    <div id="drop-zone" class="flex-1 border-2 border-dashed border-dark-border rounded-xl flex flex-col items-center justify-center text-center p-4 hover:border-brand-500 hover:bg-white/5 transition cursor-pointer z-10">
+                        <i data-lucide="file-type-2" class="w-10 h-10 text-gray-400 mb-2 group-hover:text-brand-500 transition pointer-events-none"></i>
+                        <p class="text-sm font-medium pointer-events-none">Drag & Drop CAD/Revit file</p>
+                        <p class="text-xs text-gray-500 mt-1 pointer-events-none">Or click to browse (.dwg, .rvt, .pdf)</p>
+                        <input type="file" id="file-input" class="hidden" accept=".dwg,.rvt,.pdf,.png,.jpg,.jpeg">
                     </div>
                     <!-- Uploading State (hidden) -->
                     <div id="upload-progress" class="absolute inset-0 bg-dark-panel flex flex-col items-center justify-center p-6 hidden z-10">
@@ -135,6 +136,15 @@
                                 <button class="flex-1 py-1.5 border border-dark-border rounded-md text-xs hover:bg-white/5">Sunset</button>
                                 <button class="flex-1 py-1.5 border border-dark-border rounded-md text-xs hover:bg-white/5">Night</button>
                             </div>
+                        </div>
+
+                        <!-- Real AI API Integration -->
+                        <div class="mt-4 pt-4 border-t border-dark-border">
+                            <label class="text-xs text-brand-500 uppercase tracking-wider mb-2 block flex items-center justify-between">
+                                <span>AI API Key (Tùy chọn)</span>
+                            </label>
+                            <input type="password" id="hf-api-key" placeholder="Nhập HuggingFace token (hf_...)" class="w-full bg-dark-bg border border-dark-border rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-brand-500 transition text-white placeholder-gray-600">
+                            <p class="text-[10px] text-gray-500 mt-1">Nhập key để render hình thật bằng AI SDXL. Bỏ trống dùng ảnh mẫu.</p>
                         </div>
                     </div>
                 </div>
