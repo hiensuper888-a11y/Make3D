@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
-import { IFCLoader } from 'https://cdn.jsdelivr.net/npm/web-ifc-three@0.0.126/IFCLoader.js';
+import { IFCLoader } from 'web-ifc-three/IFCLoader';
 
 // Setup IFCLoader WASM path
 const ifcLoader = new IFCLoader();
